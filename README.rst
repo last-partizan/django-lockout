@@ -4,12 +4,12 @@ in your site's cache, it is fast and lightweight. It is intended for Django
 sites where protection against brute force attacks is desired with no
 additional database overhead.
 
-``django-lockout`` wraps ``django.contrib.auth.authenticate`` and raises
-``lockout.LockedOut`` when too many login attempts occur. Your views are
+With ``django-lockout`` you can user ``lockout.decorators.enforce_lockout``
+to wrap ``django.contrib.auth.view.login`` or your login function to check
+for failed login attempts. This decorator raises ``lockout.LockedOut``
+when too many login attempts occur. Your middleware are
 responsible for catching and handling ``LockedOut`` however you deem
-appropriate. ``django-lockout``'s middleware class stores the request object
-in the thread local namespace to give the wrapped ``auth.authenticate``
-function access to it.
+appropriate.
 
 Login attempts can be tracked by IP only or by IP plus user-agent.
 
@@ -33,29 +33,13 @@ You can install ``django-lockout`` with::
 or::
 
     easy_install django-lockout
-    
-Add ``'lockout.middleware.LockoutMiddleware'`` to your ``MIDDLEWARE_CLASSES``.
-It should come before Django's ``AuthenticationMiddleware``::
-
-    MIDDLEWARE_CLASSES = [
-        'lockout.middleware.LockoutMiddleware',
-        'django.contrib.sessions.middleware.SessionMiddleware',
-        'django.contrib.auth.middleware.AuthenticationMiddleware',
-        ...
-        ]
+ 
+Decorate your login function with ``lockout.decorators.enforce_lockout``
+and write middleware to catch ``LockedOut`` exception.
 
 Adding ``'lockout'`` to your ``INSTALLED_APPS`` is only required if you want to
 run ``django-lockout``'s test suite.
     
-Usage
-============ 
-Below is an example of how you might use ``django-lockout``::
-
-    try:
-        user = auth.authenticate(username=username, password=password)
-    except LockedOut:
-        messages.warning(request, 'Your account has been locked out because of too many failed login attempts.')
-
 If you need to clear the record of failed attempts for an IP or IP plus
 user-agent, call ``lockout.reset_attempts``, passing the ``request`` for that
 IP or IP plus user-agent::

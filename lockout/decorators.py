@@ -2,31 +2,17 @@
 Lockout Decorators
 """
 
-########################################################################
-
 from django.utils.functional import wraps
 from django.core.cache import cache
-from middleware import thread_namespace
 from exceptions import LockedOut
 from utils import generate_base_key
 import settings
 
-########################################################################
-
 def enforce_lockout(function):
-    """Wraps the provided ``function`` (django.contrib.auth.authenticate) to
-    enforce lockout if the max attempts is exceeded.
+    """Wraps the login function to enforce lockout if the max attempts is exceeded.
     """
-
-    def wrapper(*args, **kwargs):
-        # Get request details from thread local
-        request = getattr(thread_namespace, 'lockoutrequest', None)
-        
-        if request is None:
-            # The call to authenticate must not have come via an HttpRequest, so
-            # lockout is not enforced.
-            return function(*args, **kwargs)
-
+    @wraps(function)
+    def wrapper(request, *args, **kwargs):
         params = []
         ip = request.META.get('HTTP_X_FORWARDED_FOR', None)
         if ip:
@@ -45,23 +31,26 @@ def enforce_lockout(function):
         if attempts >= settings.MAX_ATTEMPTS:
             raise LockedOut()
         
-        result = function(*args, **kwargs)
-        
-        if result is None:
-            try:
-                attempts = cache.incr(key)
-            except ValueError:
-                # No such key, so set it
-                cache.set(key, 1, settings.ENFORCEMENT_WINDOW)
-            
-            # If attempts is max allowed, set a new key with that
-            # value so that the lockout time will be based on the most
-            # recent login attempt.
-            if attempts >= settings.MAX_ATTEMPTS:
-                cache.set(key, attempts, settings.LOCKOUT_TIME)
-        
-        return result
-    
-    return wraps(function)(wrapper)
+        response = function(request, *args, **kwargs)
 
-########################################################################
+        if request.method == 'POST':
+            login_failed = (
+                response and
+                not response.has_header('location') and
+                response.status_code != 302
+            )
+            if login_failed:
+                try:
+                    attempts = cache.incr(key)
+                except ValueError:
+                    # No such key, so set it
+                    cache.set(key, 1, settings.ENFORCEMENT_WINDOW)
+                
+                # If attempts is max allowed, set a new key with that
+                # value so that the lockout time will be based on the most
+                # recent login attempt.
+                if attempts >= settings.MAX_ATTEMPTS:
+                    cache.set(key, attempts, settings.LOCKOUT_TIME)
+            
+        return response
+    return wrapper
